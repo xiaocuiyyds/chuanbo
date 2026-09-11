@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+ocr_samples/
+
+# macOS
+.DS_Store
+
+# 本地工具状态（含 pid / port / token 等运行时文件，不应入库）
+.superpowers/
+.claude/settings.local.json

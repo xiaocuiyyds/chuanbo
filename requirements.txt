@@ -1,0 +1,11 @@
+pymupdf
+faiss-cpu
+openai
+numpy
+python-dotenv
+rank-bm25
+jieba
+fastapi
+uvicorn[standard]
+python-multipart
+requests
