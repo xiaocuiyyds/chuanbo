@@ -63,22 +63,27 @@ IMAGE_SEARCH_POOL = 10  # 图像检索先取的候选页数，供 RRF 融合
 RERANK_POOL = 15  # RRF 融合先多捞的候选数，交给 reranker 精排后再截断到 5
 IMAGE_TOP_MIN_SCORE = 0.35  # 图像检索最强命中低于这个分数就不算"有把握"，不做强制保留
 NEIGHBOR_WINDOW = 1  # 喂给回答模型时，每个命中片段前后各带几个相邻片段
+TOP_K = 5  # 最终交给回答模型的片段数
 
 
-def retrieve(store, image_index, dashscope_key, deepseek_key, history, question, use_rerank=True):
-    """查询改写 -> 向量+BM25+图像三路 RRF 融合 -> （可选）reranker 精排，返回最终 top5。
+def _rerank_top(dashscope_key, query, pool, n):
+    """用 reranker 从候选里挑出最相关的 n 条；调用失败时退回 RRF 的原始排序。"""
+    if not pool or n <= 0:
+        return []
+    try:
+        reranked = rerank(dashscope_key, query, [c.retrieval_text for c, _ in pool], top_n=n)
+        return [(pool[idx][0], score) for idx, score in reranked]
+    except Exception:
+        return pool[:n]
 
-    RRF 只按排名求和，一个候选如果只在某一路（比如图像检索）里排第一、其余两路完全没有
-    信号，容易被"三路都沾一点边"的候选压过去；reranker 不关心候选来自哪一路，只看候选
-    内容跟问题的真实相关性重新打分，能纠正这种排名失真。reranker 调用失败时退回 RRF 原始排序。
 
-    但 reranker 本身也是纯文本模型，只看候选片段的转录文字——如果一个页面正是因为转录
-    文字过于简略才需要靠图像检索才能被召回，reranker 反而会因为文字信号弱把它判定为不
-    相关、挤出结果，等于抵消了图像检索通道的作用。所以图像检索里把握最大的那一页（分数
-    达到阈值）会被强制保留一个位置，不受 reranker 意见影响。
+def _retrieve_pool(store, image_index, dashscope_key, search_query, keyword_query):
+    """跑一轮三路检索，返回 (候选列表, 图像检索最有把握的那一页)。
+
+    向量和 BM25 两路分数量纲不同，直接加权很难调；RRF 只看排名，对报警代码/型号这类
+    关键词能命中、语义检索容易漏的情况更稳健。图像检索通道用来弥补转录文字过于简略、
+    文本检索找不到的页面。
     """
-    search_query, keyword_query = prepare_query(deepseek_key, history, question)
-
     # 文本 embedding 和图像通道的多模态 embedding 互不依赖，并行发出省掉一次串行往返
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool_exec:
         query_vec_future = pool_exec.submit(embed_query, dashscope_key, search_query)
@@ -102,19 +107,42 @@ def retrieve(store, image_index, dashscope_key, deepseek_key, history, question,
 
     # BM25 用中英混合的关键词串，向量检索仍然用原问题（embedding 模型本身跨语言）
     pool = store.search(query_vec, keyword_query, k=RERANK_POOL, image_page_ranks=image_page_ranks)
-    results = pool[:5]
-    if use_rerank and pool:
-        try:
-            docs = [c.retrieval_text for c, _ in pool]
-            reranked = rerank(dashscope_key, search_query, docs, top_n=5)
-            results = [(pool[idx][0], score) for idx, score in reranked]
-        except Exception:
-            pass  # 保留上面 RRF 的兜底结果
+    return pool, top_image_page
+
+
+def retrieve(
+    store,
+    image_index,
+    dashscope_key,
+    deepseek_key,
+    history,
+    question,
+    use_rerank=True,
+):
+    """查询改写 -> 三路 RRF 融合 ->（可选）补充检索 -> reranker 精排，返回最终 top5。
+
+    曾经尝试过在第一轮之后让模型判断"信息够不够、还缺什么"再补检一轮，实测是净负收益：
+    复合题的页面覆盖率一点没涨（补充查询往往复述了已经覆盖的那一面，而不是真正缺的那一面），
+    延迟却翻倍，给补充轮预留名额之后还把单点问题的 recall@5 从 96% 拖到 92%。
+    详见 evals/retrieval.jsonl 里的复合题。
+
+    reranker 不关心候选是哪一路、哪一跳召回的，只看内容跟问题的真实相关性重新打分，
+    能纠正 RRF 纯按排名求和带来的排序失真；调用失败时退回 RRF 原始排序。
+
+    但 reranker 本身是纯文本模型，只看片段的转录文字——如果一个页面正是因为转录文字
+    过于简略才需要靠图像检索召回，reranker 反而会因为文字信号弱把它判定为不相关、
+    挤出结果，等于抵消了图像检索通道的作用。所以图像检索里把握最大的那一页（分数达到
+    阈值）会被强制保留一个位置，不受 reranker 意见影响。
+    """
+    search_query, keyword_query = prepare_query(deepseek_key, history, question)
+    pool, top_image_page = _retrieve_pool(store, image_index, dashscope_key, search_query, keyword_query)
+
+    results = _rerank_top(dashscope_key, search_query, pool, TOP_K) if use_rerank else pool[:TOP_K]
 
     if top_image_page and not any((c.source, c.page) == top_image_page for c, _ in results):
         rescue = next((item for item in pool if (item[0].source, item[0].page) == top_image_page), None)
         if rescue:
-            results = results[:-1] + [rescue]
+            results = results[: TOP_K - 1] + [rescue]
 
     return search_query, results
 

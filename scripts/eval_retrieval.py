@@ -5,7 +5,13 @@
 
 评测集在 evals/retrieval.jsonl，每行一道题：
 
-    {"q": 问题, "source": 答案所在文档, "page": 答案所在页, "evidence": 该页必含的字符串}
+    单页题  {"q": .., "source": .., "page": 12, "evidence": "该页必含的字符串"}
+    复合题  {"q": .., "source": .., "pages": [12, 15], "evidence": {"12": .., "15": ..}, "kind": "multi"}
+
+复合题的答案需要跨页才完整（例如"泵的规格是多少、启动前要先做什么"分别在两页上）。
+它们用"所需页是否都进了 top5"来衡量，单页题的 recall 看不出这种差别。
+曾用它们评估过"让模型判断缺口再补检一轮"的多跳方案，结论是覆盖率毫无改善、延迟翻倍，
+已经回退；这组题保留下来，作为衡量跨页覆盖能力的基准。
 
 evidence 是用来校验标注本身的：标注一律先用 --verify 对着语料检查一遍，确认那句话
 真的在标注的页上，否则整个评测就建立在错误的基准上。标注来自语料内容，不是从系统的
@@ -40,8 +46,20 @@ EVAL_PATH = BASE_DIR / "evals" / "retrieval.jsonl"
 
 
 def load_cases() -> list[dict]:
+    """读评测集，把单页题和复合题统一成 pages/evidence 两个字段。"""
+    cases = []
     with open(EVAL_PATH, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        for line in f:
+            if not line.strip():
+                continue
+            case = json.loads(line)
+            if "pages" not in case:
+                case["pages"] = [case["page"]]
+                case["evidence"] = {str(case["page"]): case["evidence"]}
+            case["evidence"] = {int(k): v for k, v in case["evidence"].items()}
+            case.setdefault("kind", "single")
+            cases.append(case)
+    return cases
 
 
 def verify_cases(cases: list[dict], store: VectorStore) -> int:
@@ -53,13 +71,15 @@ def verify_cases(cases: list[dict], store: VectorStore) -> int:
 
     bad = 0
     for case in cases:
-        key = (case["source"], case["page"])
-        if key not in pages:
-            print(f"  ✗ 标注的页不存在: {case['source'][:30]} p{case['page']}  ({case['q']})")
-            bad += 1
-        elif case["evidence"] not in pages[key]:
-            print(f"  ✗ 该页不含 evidence {case['evidence']!r}: {case['source'][:30]} p{case['page']}")
-            bad += 1
+        for page in case["pages"]:
+            key = (case["source"], page)
+            evidence = case["evidence"][page]
+            if key not in pages:
+                print(f"  ✗ 标注的页不存在: {case['source'][:30]} p{page}  ({case['q']})")
+                bad += 1
+            elif evidence not in pages[key]:
+                print(f"  ✗ 该页不含 evidence {evidence!r}: {case['source'][:30]} p{page}")
+                bad += 1
     print(f"标注校验：{len(cases) - bad}/{len(cases)} 条通过")
     return bad
 
@@ -92,8 +112,11 @@ def main() -> None:
     image_index = ImageIndex.load(DATA_DIR)
     start = time.time()
 
-    def run(case: dict) -> tuple[dict, int | None]:
-        """返回标注页在检索结果中的名次（从 1 开始），没命中则为 None。"""
+    def run(case: dict) -> tuple[dict, int | None, float]:
+        """返回 (题目, 首个标注页的名次, 标注页被覆盖的比例)。
+
+        名次用于单页题的 recall/MRR；覆盖率用于复合题——它问的是"答全这道题所需的
+        几页里，检索到了几页"，这才是多跳机制真正该改善的指标。"""
         try:
             _, results = retrieve(
                 store, image_index, dashscope_key, deepseek_key, [], case["q"],
@@ -101,22 +124,31 @@ def main() -> None:
             )
         except Exception as e:
             print(f"  检索失败 {case['q']}: {e}")
-            return case, None
+            return case, None, 0.0
+
+        retrieved = {(c.source, c.page) for c, _ in results}
+        wanted = {(case["source"], p) for p in case["pages"]}
+        coverage = len(retrieved & wanted) / len(wanted)
+
+        best = None
         for rank, (chunk, _) in enumerate(results, 1):
-            if (chunk.source, chunk.page) == (case["source"], case["page"]):
-                return case, rank
-        return case, None
+            if (chunk.source, chunk.page) in wanted:
+                best = rank
+                break
+        return case, best, coverage
 
-    ranks: list[tuple[dict, int | None]] = []
+    ranks: list[tuple[dict, int | None, float]] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-        for case, rank in pool.map(run, cases):
-            ranks.append((case, rank))
+        for case, rank, coverage in pool.map(run, cases):
+            ranks.append((case, rank, coverage))
 
-    n = len(ranks)
-    recall1 = sum(1 for _, r in ranks if r == 1) / n
-    recall3 = sum(1 for _, r in ranks if r and r <= 3) / n
-    recall5 = sum(1 for _, r in ranks if r and r <= 5) / n
-    mrr = sum(1 / r for _, r in ranks if r) / n
+    single = [(c, r, cov) for c, r, cov in ranks if c["kind"] == "single"]
+    multi = [(c, r, cov) for c, r, cov in ranks if c["kind"] == "multi"]
+    n = len(single) or 1
+    recall1 = sum(1 for _, r, _ in single if r == 1) / n
+    recall3 = sum(1 for _, r, _ in single if r and r <= 3) / n
+    recall5 = sum(1 for _, r, _ in single if r and r <= 5) / n
+    mrr = sum(1 / r for _, r, _ in single if r) / n
 
     print(f"\n评测集 {n} 题   重排 {'关' if args.no_rerank else '开'}   用时 {time.time()-start:.0f}s")
     print(f"  recall@1  {recall1:.1%}")
@@ -124,11 +156,21 @@ def main() -> None:
     print(f"  recall@5  {recall5:.1%}")
     print(f"  MRR       {mrr:.3f}")
 
-    missed = [(c, r) for c, r in ranks if r is None]
+    if multi:
+        full = sum(1 for _, _, cov in multi if cov == 1.0)
+        avg = sum(cov for _, _, cov in multi) / len(multi)
+        print(f"\n复合题 {len(multi)} 道（答案跨页，用来检验补充检索）")
+        print(f"  所需页全部检索到  {full}/{len(multi)}")
+        print(f"  平均页面覆盖率    {avg:.1%}")
+        for case, _, cov in multi:
+            if cov < 1.0:
+                print(f"    覆盖 {cov:.0%}  {case['q']}  (需 p{case['pages']})")
+
+    missed = [(c, r) for c, r, _ in ranks if r is None]
     if missed:
-        print(f"\n未命中 {len(missed)} 题：")
+        print(f"\n完全未命中 {len(missed)} 题：")
         for case, _ in missed:
-            print(f"  {case['q']}\n      标注: {case['source'][:34]} p{case['page']}")
+            print(f"  {case['q']}\n      标注: {case['source'][:34]} p{case['pages']}")
 
 
 if __name__ == "__main__":

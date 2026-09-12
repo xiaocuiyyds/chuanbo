@@ -23,3 +23,9 @@
 {"q": "STS 作业用的软管和应急脱离接头要拧多大扭矩", "source": "Prime Purity STS Manual First Draft - July 2026.pdf", "page": 26, "evidence": "250-270Nm"}
 {"q": "STS 作业中货舱压力为什么重要", "source": "Prime Purity STS Manual First Draft - July 2026.pdf", "page": 26, "evidence": "Cargo Tank Pressure"}
 {"q": "STS 作业的协调人负责哪些事", "source": "Prime Purity STS Manual First Draft - July 2026.pdf", "page": 5, "evidence": "STS operating procedures are followed"}
+{"q": "应急消防泵的规格是多少，启动它之前要先做什么", "source": "Prime Purity Safety Manual First Draft - July 2026.pdf", "pages": [65, 68], "evidence": {"65": "Emergency Fire Pump", "68": "vacuum pump should be started first"}, "kind": "multi"}
+{"q": "烧碱储罐有多大容量，加装烧碱之前轮机长要检查什么", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "pages": [251, 253], "evidence": {"251": "15.0m³ capacity NaOH storage tank", "253": "NaOH to be bunkered"}, "kind": "multi"}
+{"q": "发电机什么情况下会自动并车，应急发电机又怎么手动断开停机", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "pages": [215, 218], "evidence": {"215": "power available for 30 seconds", "218": "Manual Disconnection and Stopping"}, "kind": "multi"}
+{"q": "消防总管的压力靠什么泵维持，这台泵的吸入阀是哪个", "source": "Prime Purity Safety Manual First Draft - July 2026.pdf", "pages": [65, 68], "evidence": {"65": "Fire Line Pressurising Pump", "68": "WMV205"}, "kind": "multi"}
+{"q": "主机滑油低压时系统怎么自动反应，滑油泵本身的配置是什么", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "pages": [145, 146], "evidence": {"145": "0.4MPa set point", "146": "Main Engine"}, "kind": "multi"}
+{"q": "锅炉给水系统的压力参数是多少，锅炉水的化验标准又是什么", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "pages": [69, 73], "evidence": {"69": "BOILER FEED WATER SYSTEM", "73": "Boiler Water"}, "kind": "multi"}
