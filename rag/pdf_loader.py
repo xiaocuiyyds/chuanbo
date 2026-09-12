@@ -30,7 +30,12 @@ STRICT_VL_PROMPT = VL_PROMPT + (
     "严禁把同一句描述重复套用到多个元件上。"
 )
 
-DEGENERATE_MIN_LINES = 8  # 雷同行至少要有这么多，避免误伤正常的短列表
+# 雷同行至少要有这么多。定在 20 是对着真实语料量出来的：退化页面的重复行动辄上百
+# （Machinery p184 有 313 行），而正常页面上重复最多的是每页页脚的
+# "Draft Manual for Review & Comment" 水印，在内容稀疏的章节首页上也只有十几行。
+# 取 8 会把 6 个这类页面误判成退化（白白多一次转录调用），取 20 则一个不误报，
+# 同时已知的退化页仍然全部命中。
+DEGENERATE_MIN_LINES = 20
 DEGENERATE_LINE_RATIO = 0.35  # 且要占全部内容行的三成半以上
 DEGENERATE_MIN_REPEAT = 3  # 同一个句式至少重复这么多次才算进雷同行
 DEGENERATE_MIN_SUBSTANCE = 15  # 句式里至少要有这么多字母/数字/汉字，滤掉分隔线之类

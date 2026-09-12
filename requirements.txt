@@ -9,3 +9,6 @@ fastapi
 uvicorn[standard]
 python-multipart
 requests
+
+# 测试
+pytest
