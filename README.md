@@ -19,6 +19,7 @@
 ```
 PDF ─→ 逐页渲染 PNG (180 DPI)
      ─→ Qwen-VL 转录为 Markdown（表格转表格，示意图给文字描述）
+     ─→ 转录落盘到 transcripts/（下游可随时重建，不必重跑视觉模型）
      ─→ 按标题/表格边界切块（目标 800 字符，大表格按行拆分并重复表头）
      ─→ 用整页作背景，为每个片段生成定位性上下文（Contextual Retrieval）
      ─→ 文本向量 → index.faiss
@@ -35,10 +36,35 @@ PDF ─→ 逐页渲染 PNG (180 DPI)
         BM25    ├─→ RRF 融合 ─→ qwen3-rerank 精排 ─→ top 5
         图像检索 ┘
      ─→ 取相邻片段补全被切断的步骤和表格
-     ─→ 片段原文 + 命中页原图 → 多模态模型流式作答
+     ─→ 会话摘要 + 最近三轮 + 片段原文 + 命中页原图 → 多模态模型流式作答
 ```
 
+当前检索基线（`evals/retrieval.jsonl`，25 道单页题）：recall@1 80%、recall@5 96%、MRR 0.870。
+
 图像检索通道是为了弥补转录文字过于简略的页面——这类页面文本信号弱，纯文本检索找不到。但 reranker 本身是文本模型，会因为同样的原因把它们判为不相关，所以图像检索里把握最大的那一页会被强制保留一个位置。
+
+## 三层产物
+
+贵的那一步只做一次，下游随时可以重建：
+
+```
+page_images/ + transcripts/        每页一次视觉模型调用，最慢最贵
+      ↓  纯函数，可反复重跑
+   chunks.pkl                      切块 + 片段上下文
+      ↓  纯函数，可反复重跑
+   index.faiss                     向量索引
+```
+
+调整切块参数、改写上下文 prompt、换嵌入模型之后，跑 `scripts/rebuild_index.py`
+即可，几百页手册不必重新过一遍视觉模型。
+
+## 会话记忆
+
+喂给模型的历史是「会话摘要 + 最近三轮」。只留最近三轮的话，排障对话开头确立的前提
+（设备型号、已确认的设定值、已排除的可能）撑不过几轮，指代就会解析错。摘要只对已经
+滑出窗口的那部分生成，持久化在对话文件里。
+
+最近几轮的助手消息还会附上它当时引用的文档和页码，这样「刚才那页第 3 步」才有指代对象。
 
 ## 用到的模型
 
@@ -106,6 +132,7 @@ data/
 ├── chunks.pkl           片段内容与元信息
 ├── image_index.faiss    页面图像向量索引
 ├── image_pages.json     图像索引对应的 (文档, 页码)
+├── transcripts/         每页的 Markdown 转录，重建索引的源头
 ├── page_images/         每页的渲染图，回答时交给多模态模型
 └── conversations/       对话历史，一个对话一个 JSON
 ```
@@ -118,9 +145,46 @@ data/
 - 侧边栏可以按文档单独删除，不必清空整个知识库
 - 「清空知识库」会删掉全部索引和页图
 
+## 测试与评测
+
+```bash
+.venv/bin/python -m pytest
+```
+
+57 个用例，不调用任何外部服务，半秒跑完。覆盖切块、转录持久化、向量库维护、
+退化检测、会话记忆五块纯函数逻辑。
+
+检索回归评测需要调接口，手动跑：
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/eval_retrieval.py --verify   # 只校验标注，不花钱
+PYTHONPATH=. .venv/bin/python scripts/eval_retrieval.py
+```
+
+评测集里的标注取自语料内容本身，不是从系统检索结果反推的——后者是循环论证，
+永远会得满分。`--verify` 会检查每条标注的证据句确实在标注页上。
+
+改了检索相关的任何东西都应该跑一遍。这套评测已经拦下过一次改动：「让模型判断
+检索缺口再补检一轮」的多跳方案看着合理，实测覆盖率零改善、延迟翻倍、还把单点题的
+recall@5 从 96% 拖到 92%，据此回退。
+
 ## 维护脚本
 
-两个脚本都支持 `--dry-run`（只统计不调用接口）和 `--limit N`（先试 N 条），并且在改动前自动备份 `chunks.pkl` 和 `index.faiss`。
+以下脚本都支持 `--dry-run`（只统计不调用接口）和 `--limit N`（先试 N 条），并且在改动前自动备份 `chunks.pkl` 和 `index.faiss`。
+
+### `scripts/rebuild_index.py`
+
+从 `transcripts/` 重建切块和向量索引，不重跑视觉模型。改了切块参数或嵌入模型之后用它。
+默认复用已有片段的上下文（按片段正文对齐），切块参数没变时全部命中、零调用。
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/rebuild_index.py --dry-run
+PYTHONPATH=. .venv/bin/python scripts/rebuild_index.py
+```
+
+### `scripts/backfill_transcripts.py`
+
+一次性脚本。转录持久化是后加的，在此之前建的索引只剩切好的片段，用它把转录反推出来补齐。
 
 ### `scripts/repair_contexts.py`
 
@@ -144,7 +208,7 @@ PYTHONPATH=. .venv/bin/python scripts/repair_pages.py --dry-run
 PYTHONPATH=. .venv/bin/python scripts/repair_pages.py
 ```
 
-两个脚本都会改写同一份 `chunks.pkl` 和 `index.faiss`，**不要同时运行**。
+`rebuild_index.py`、`repair_contexts.py`、`repair_pages.py` 改写的是同一份 `chunks.pkl` 和 `index.faiss`，**不要同时运行**。
 
 ## 已知问题
 
@@ -152,7 +216,6 @@ PYTHONPATH=. .venv/bin/python scripts/repair_pages.py
 - **单进程内存状态，没有加锁**。上传时重建 BM25 索引与查询检索会竞争同一个 `VectorStore`，多人同时使用可能出问题。
 - **没有"停止生成"**。客户端断开后，后端仍会把回答生成完并存入历史。
 - **异常大多被静默吞掉，且没有日志**。API 余额不足这类问题会表现为"某些片段没有上下文"，不会直接报错。
-- **没有测试**。
 - **整本 PDF 的页面图会一次性读进内存**。几百页的手册占用可观，上千页可能撑爆内存。
 
 ## 目录结构
@@ -165,10 +228,13 @@ rag/
 ├── embeddings.py    文本向量
 ├── image_index.py   页面图像向量索引
 ├── vectorstore.py   FAISS + BM25，RRF 融合，邻接扩展
+├── transcripts.py   页面转录的持久化读写
 ├── reranker.py      重排
-└── history.py       对话历史存取
+└── history.py       对话历史、会话摘要
 server/main.py       FastAPI 接口
 frontend/src/        Vue 3 前端
-scripts/             索引维护脚本
+scripts/             索引维护与评测脚本
+tests/               单元测试
+evals/               检索回归评测集
 docs/                设计文档
 ```
