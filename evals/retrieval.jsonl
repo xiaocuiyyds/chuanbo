@@ -1,0 +1,25 @@
+{"q": "主机滑油入口压力低到多少会自动启动备用泵", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 145, "evidence": "0.4MPa set point"}
+{"q": "烧碱储罐的冻结温度是多少", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 251, "evidence": "'freezing' point of 12°C"}
+{"q": "压力低到什么程度会向 ESD 盘发信号", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 286, "evidence": "125BAR"}
+{"q": "发电机负载达到多少会自动启动下一台", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 215, "evidence": "30 seconds"}
+{"q": "缸套水温度靠什么维持，目标温度多少", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 97, "evidence": "88°C"}
+{"q": "辅锅炉的燃油换油是怎么切换的", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 123, "evidence": "three-way changeover valve"}
+{"q": "锅炉给水系统的设备配置和压力是多少", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 69, "evidence": "BOILER FEED WATER SYSTEM"}
+{"q": "加装烧碱前轮机长要做哪些检查", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 253, "evidence": "Chief Engineer"}
+{"q": "应急消防泵启动前必须先做什么", "source": "Prime Purity Safety Manual First Draft - July 2026.pdf", "page": 68, "evidence": "vacuum pump should be started first"}
+{"q": "气体采样系统在甲烷浓度多少时会关停", "source": "Prime Purity Safety Manual First Draft - July 2026.pdf", "page": 39, "evidence": "30% LEL"}
+{"q": "干粉灭火系统用完之后怎么关闭", "source": "Prime Purity Safety Manual First Draft - July 2026.pdf", "page": 91, "evidence": "Close the powder discharge valve"}
+{"q": "船员冻伤了现场怎么处理", "source": "Prime Purity Safety Manual First Draft - July 2026.pdf", "page": 28, "evidence": "Warm the affected body part"}
+{"q": "怎么切换到手动操舵", "source": "Prime Purity Bridge Manual First Draft - July 2026.pdf", "page": 25, "evidence": "Changing Over to Manual Steering"}
+{"q": "雷达上海杂波太多怎么调", "source": "Prime Purity Bridge Manual First Draft - July 2026.pdf", "page": 16, "evidence": "sea clutter"}
+{"q": "自动汽笛系统是什么型号的设备", "source": "Prime Purity Bridge Manual First Draft - July 2026.pdf", "page": 49, "evidence": "AUTOMATIC WHISTLE SYSTEM"}
+{"q": "报警抑制功能禁用之后多久会恢复", "source": "KC-700 Manual.pdf", "page": 51, "evidence": "报警抑制"}
+{"q": "发电机控制模块上显示哪些状态信息", "source": "KC-700 Manual.pdf", "page": 88, "evidence": "发电机控制模块"}
+{"q": "值班轮机员的责任怎么转移", "source": "KC-700 Manual.pdf", "page": 153, "evidence": "值班责任转移"}
+{"q": "AutoChief 600 的每周维护要做什么", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 97, "evidence": "每周维护"}
+{"q": "轴承磨损状态监测怎么进入操作页面", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 49, "evidence": "BWCM"}
+{"q": "Super User 这个用户级别的超时时间是多久", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 90, "evidence": "Super User"}
+{"q": "主机启动空气压力过低会怎样", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 37, "evidence": "启动气压过低"}
+{"q": "STS 作业用的软管和应急脱离接头要拧多大扭矩", "source": "Prime Purity STS Manual First Draft - July 2026.pdf", "page": 26, "evidence": "250-270Nm"}
+{"q": "STS 作业中货舱压力为什么重要", "source": "Prime Purity STS Manual First Draft - July 2026.pdf", "page": 26, "evidence": "Cargo Tank Pressure"}
+{"q": "STS 作业的协调人负责哪些事", "source": "Prime Purity STS Manual First Draft - July 2026.pdf", "page": 5, "evidence": "STS operating procedures are followed"}
