@@ -23,12 +23,14 @@ from rag.history import (
     delete_conversation,
     list_conversations,
     load_conversation,
+    load_summary,
     new_conversation_id,
-    recent_turns,
     save_conversation,
+    save_summary,
+    session_history,
 )
 from rag.image_index import ImageIndex, embed_image, embed_text_query
-from rag.llm import answer_stream, contextualize_chunks, prepare_query
+from rag.llm import answer_stream, contextualize_chunks, prepare_query, summarize_session
 from rag.pdf_loader import extract_pages
 from rag.reranker import rerank
 from rag.vectorstore import VectorStore
@@ -403,7 +405,19 @@ def api_chat(req: ChatRequest):
         raise HTTPException(400, "请先上传并处理 PDF 文档")
 
     messages = load_conversation(DATA_DIR, req.conversation_id)
-    history = recent_turns(messages, n_turns=N_HISTORY_TURNS)
+
+    # 会话摘要承载最近几轮之外的前提。排障对话到第五六轮时，第一轮确立的设备型号、
+    # 已确认的设定值、已排除的可能都已经滑出窗口，而追问往往正依赖这些。
+    summary, summary_upto = load_summary(DATA_DIR, req.conversation_id)
+    kept_from = max(0, len(messages) - N_HISTORY_TURNS * 2)
+    if kept_from > summary_upto:
+        # 只对"即将滑出窗口"的那部分重新摘要，窗口内的消息本来就会原样喂进去
+        new_summary = summarize_session(DEEPSEEK_API_KEY, messages[:kept_from])
+        if new_summary:
+            summary, summary_upto = new_summary, kept_from
+            save_summary(DATA_DIR, req.conversation_id, summary, summary_upto)
+
+    history = session_history(messages, summary, n_turns=N_HISTORY_TURNS)
     messages = messages + [{"role": "user", "content": req.question}]
 
     def stream() -> Iterator[str]:

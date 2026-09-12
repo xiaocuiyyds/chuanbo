@@ -40,6 +40,14 @@ QUERY_SYSTEM_PROMPT = (
     "只输出 JSON 本身，不要解释，不要加代码块标记。"
 )
 
+SUMMARY_SYSTEM_PROMPT = (
+    "下面是一段船员和船舶设备助手的排障对话。请把其中后续追问还会用到的信息压缩成要点，"
+    "控制在 150 字以内，用陈述句罗列，不要评价、不要复述完整问答。重点保留：\n"
+    "涉及的船舶系统和设备型号；已经确认的事实（设定值、阀件位号、报警代码、当前状态）；"
+    "已经排除的可能性；用户明确表达过的目标或约束。\n"
+    "对话里没提到的不要补充。只输出要点本身。"
+)
+
 CONTEXT_SYSTEM_PROMPT = (
     "你会看到一整页船舶设备手册的内容，以及从这页里切出来的一个片段。"
     "请用一到两句话简要说明这个片段在整页中的位置、属于哪个章节或主题、涉及什么设备或功能，"
@@ -134,6 +142,41 @@ def prepare_query(api_key: str, history: list[dict], question: str) -> tuple[str
     # BM25 同时拿到原问题和英文关键词，中文手册和英文手册都能命中
     keyword_query = f"{search_query} {keywords}".strip() if keywords else search_query
     return search_query, keyword_query
+
+
+def summarize_session(api_key: str, messages: list[dict]) -> str:
+    """把一段对话压缩成后续追问还用得上的要点；失败时返回空串。
+
+    只喂最近三轮给模型，意味着对话稍长一点，开头确立的前提就被切掉了：第一轮说明了
+    "主机是 MAN B&W ME-B 配 AutoChief 600"，到第五轮问"那个报警怎么复位"时，
+    查询改写已经看不到那句话，没法把"那个报警"正确展开。排障本身就是多轮的，
+    这类前提必须跨轮保留。
+
+    摘要只保留事实性要点（设备型号、设定值、已排除的可能），不保留完整问答——
+    后者会把上下文重新撑大，失去压缩的意义。
+    """
+    if not messages:
+        return ""
+
+    transcript = "\n\n".join(
+        f"{'用户' if m['role'] == 'user' else '助手'}：{m['content'][:600]}" for m in messages
+    )
+    client = _deepseek_client(api_key)
+    try:
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": transcript},
+            ],
+            stream=False,
+            max_tokens=400,
+            temperature=0,
+            extra_body=DEEPSEEK_NO_THINKING,
+        )
+        return (response.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
 
 
 def generate_chunk_context(api_key: str, page_text: str, chunk_text: str) -> str:
