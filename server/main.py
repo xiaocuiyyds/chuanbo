@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from rag import transcripts
 from rag.chunker import chunk_pages
 from rag.embeddings import embed_query, embed_texts
 from rag.history import (
@@ -161,6 +162,7 @@ def api_get_knowledge_base():
 def api_clear_knowledge_base():
     VectorStore.clear(DATA_DIR)
     ImageIndex.clear(DATA_DIR)
+    shutil.rmtree(transcripts.transcripts_dir(DATA_DIR), ignore_errors=True)
     shutil.rmtree(IMAGES_DIR, ignore_errors=True)
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     state["vectorstore"] = None
@@ -182,6 +184,8 @@ def api_delete_source(source: str):
     image_index = state["image_index"]
     if image_index is not None and image_index.remove_source(source):
         image_index.save(DATA_DIR)
+
+    transcripts.remove_source(DATA_DIR, source)
 
     safe_source = re.sub(r"[/\\]", "_", source)
     for path in IMAGES_DIR.glob(f"{glob.escape(safe_source)}_p*.png"):
@@ -234,6 +238,10 @@ def api_upload(files: list[UploadFile]):
                         {"type": "page_progress", "file": filename, "done": done, "total": total}
                     )
                 pages = future.result()
+
+            # 转录先落盘再进下游。这样以后调整切块参数或换嵌入模型时，可以用
+            # scripts/rebuild_index.py 直接从这里重建索引，不必重跑视觉模型。
+            transcripts.save_pages(DATA_DIR, filename, pages)
 
             yield ndjson({"type": "file_done", "file": filename, "pages": len(pages)})
             all_pages.extend(pages)
