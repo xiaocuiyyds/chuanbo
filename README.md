@@ -161,8 +161,8 @@ data/
 .venv/bin/python -m pytest
 ```
 
-57 个用例，不调用任何外部服务，半秒跑完。覆盖切块、转录持久化、向量库维护、
-退化检测、会话记忆五块纯函数逻辑。
+110 个用例，不调用任何外部服务，一秒左右跑完。覆盖切块、转录持久化、向量库维护、
+退化检测、会话记忆、图纸矢量与片段生成等纯函数逻辑。
 
 检索回归评测需要调接口，手动跑：
 
@@ -240,7 +240,11 @@ rag/
 ├── vectorstore.py   FAISS + BM25，RRF 融合，邻接扩展
 ├── transcripts.py   页面转录的持久化读写
 ├── reranker.py      重排
-└── history.py       对话历史、会话摘要
+├── history.py       对话历史、会话摘要
+├── diagram_pipes.py 图纸矢量管线与图例（零成本、精确）
+├── diagram_tags.py  图纸位号识别（切片 + 多遍投票）
+├── diagram_symbols.py 模板匹配符号检测（不跨页泛化，不进索引）
+└── diagram_index.py 图纸抽取结果转检索片段
 server/main.py       FastAPI 接口
 frontend/src/        Vue 3 前端
 scripts/             索引维护与评测脚本
