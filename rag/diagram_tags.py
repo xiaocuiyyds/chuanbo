@@ -15,8 +15,12 @@ GFP 开头的位号，而这个前缀全书不存在。
    有些页面存的位图是翻转的，靠页面矩阵摆正，直接取字节会拿到上下颠倒又镜像的图。
 2. 切成小块分别识别，并且 prompt 只要位号原文、明令禁止写描述。
    "描述连接关系"这类指令正是幻觉的诱因。
-3. 同一块跑两遍取交集。真读到的位号两遍都在，编造的不稳定。
-   实测一页上 51 个位号两遍都出现、4 个只出现一遍。
+3. 同一块跑多遍，按多数票保留。模型输出的跑间方差很大——同一页四遍分别给出
+   182、125、121、53 个候选。早先用"两遍取交集"，等价于要求 2/2 全票，
+   结果只要有一遍发挥差就把好位号一票否决掉（实测 p112 因此丢了人工核对过的
+   GFV19~GFV22）。改成三遍里至少两遍读到，单次坏结果不再具有否决权。
+   实测人工核对的 21 个基准位号在各档阈值下都是 21/21 全召回，
+   而噪声候选从 ≥1 票的 251 个降到 ≥3 票的 21 个。
 
 只抽位号，不抽器件类型和连接关系——后两者实测不可靠：装在风机出口立管上的阀门
 GFV21/GFV22 会被判成"泵/风机"（被紧邻的风机符号带偏），相邻编号的管路
@@ -27,6 +31,7 @@ import base64
 import concurrent.futures
 import io
 import re
+from collections import Counter
 
 import fitz
 from openai import OpenAI
@@ -37,7 +42,8 @@ VL_MODEL = "qwen-vl-plus"
 
 TILE_GRID = 3  # 切成 3x3
 TILE_OVERLAP = 0.08  # 相邻块重叠比例，避免位号正好落在切缝上被切成两半
-RUNS = 2  # 每块跑几遍，取交集
+RUNS = 3  # 每块跑几遍
+MIN_VOTES = 2  # 至少几遍读到才算数（多数票）
 MIN_DIAGRAM_PIXELS = 4_000_000  # 判定为图纸页的嵌入图最小像素数
 MAX_DIAGRAM_TEXT = 1500  # 图纸页的文字层字符数上限（标注都在图里，文字层必然稀疏）
 MIN_RENDER_ZOOM = 2.5  # 渲染倍数下限，跟入库流程保持一致
@@ -163,11 +169,14 @@ def extract_page_tags(
     runs: int = RUNS,
     grid: int = TILE_GRID,
     max_workers: int = 5,
+    min_votes: int = MIN_VOTES,
 ) -> tuple[set[str], set[str]]:
     """抽取一页图纸上的位号。
 
-    返回 (稳定位号, 不稳定位号)。稳定 = 每一遍都读到，可以入库；
-    不稳定 = 只有部分遍次读到，多半是误识或编造，留给调用方决定要不要人工看。
+    返回 (稳定位号, 不稳定位号)。稳定 = 至少 min_votes 遍读到，可以入库；
+    不稳定 = 票数不够，多半是误识或编造，留给调用方决定要不要人工看。
+
+    用多数票而不是全票：模型跑间方差大，要求全票时一次差的输出就能把真位号否决掉。
     """
     client = OpenAI(api_key=api_key, base_url=DASHSCOPE_BASE_URL)
     tiles = _tiles(image, grid=grid)
@@ -180,6 +189,12 @@ def extract_page_tags(
         return normalize_tags(found)
 
     results = [one_run() for _ in range(runs)]
-    stable = set.intersection(*results) if results else set()
-    unstable = set.union(*results) - stable if results else set()
+    if not results:
+        return set(), set()
+    votes: Counter[str] = Counter()
+    for found in results:
+        votes.update(found)
+    threshold = min(min_votes, runs)
+    stable = {tag for tag, count in votes.items() if count >= threshold}
+    unstable = set(votes) - stable
     return stable, unstable
