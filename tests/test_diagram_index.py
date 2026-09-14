@@ -75,3 +75,19 @@ def test_build_pages_tolerates_missing_fields():
 
 def test_build_pages_on_empty_index():
     assert build_pages({}) == []
+
+
+def test_tags_survive_tokenisation_so_bm25_can_match_them():
+    """位号必须在分词后保持完整，否则用户输位号根本检索不到对应的图。
+
+    这是位号进索引的唯一价值所在：图纸页的正文转录里没有这些位号，只有这条片段有。
+    片段格式或分词规则一旦改动破坏了这个性质，位号检索会静默失效、不报任何错。
+    """
+    from rag.vectorstore import _tokenize
+
+    page = make_page(tags=["GFV19", "EWV01", "WMV205", "EC01"])
+    tokens = set(_tokenize(to_chunk_text(page)))
+    for tag in page.tags:
+        assert tag.lower() in tokens, f"{tag} 被分词打碎了"
+        # 用户直接输位号提问时，查询侧也要切出同一个 token
+        assert tag.lower() in set(_tokenize(f"{tag} 是什么设备"))
