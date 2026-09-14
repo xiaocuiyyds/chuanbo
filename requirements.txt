@@ -12,3 +12,4 @@ requests
 
 # 测试
 pytest
+pillow
