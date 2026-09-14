@@ -31,10 +31,28 @@ sys.path.insert(0, str(BASE_DIR))
 
 from rag.diagram_pipes import has_vector_pipes, summarize_page  # noqa: E402
 from rag.diagram_symbols import crop_template, detect_symbols, summarize, to_black_mask  # noqa: E402
-from rag.diagram_tags import extract_page_tags, is_diagram_page, load_diagram_image  # noqa: E402
+from rag.diagram_tags import (  # noqa: E402
+    MIN_VOTES,
+    RUNS,
+    TILE_GRID,
+    extract_page_tags,
+    is_diagram_page,
+    load_diagram_image,
+)
 
 DATA_DIR = BASE_DIR / "data"
 OUTPUT_PATH = DATA_DIR / "diagram_index.json"
+
+# 位号识别方式的标识，写进每条记录。识别方式改了以后，靠它认出哪些页的数据是旧的——
+# 否则脚本只能按"这一页在不在索引里"判断，算法一改就分不清新旧，只能整体重跑。
+# 上一次就吃了这个亏：跑到 52 页时接口欠费中断，剩下的页仍是旧算法的结果，
+# 而脚本报告"已完成 87 页、待处理 0 页"。
+TAG_METHOD = f"tiles{TILE_GRID}x{TILE_GRID}-runs{RUNS}-votes{MIN_VOTES}"
+
+
+def _is_stale(entry: dict) -> bool:
+    """这一页的位号是不是用旧方式跑的。没有 tags 的条目不算旧，那是本来就没抽到。"""
+    return entry.get("tag_method") != TAG_METHOD
 
 # 模板库：从 Machinery p112 上框出来的符号。扩充模板就是往这里加条目，
 # 键是符号类型名，值是 (页索引, x0, y0, x1, y1)。
@@ -95,13 +113,17 @@ def main() -> None:
         for i in range(len(doc)):
             if not is_diagram_page(doc, i):
                 continue
-            done = str(i + 1) in result.get(pdf.name, {})
-            if done and not args.redo:
+            existing = result.get(pdf.name, {}).get(str(i + 1))
+            if existing is not None and not args.redo and not _is_stale(existing):
                 continue
             targets.append((pdf, i))
         doc.close()
 
-    print(f"待处理图纸页 {len(targets)} 页（已完成 {sum(len(v) for v in result.values())} 页）")
+    fresh = sum(1 for pp in result.values() for e in pp.values() if not _is_stale(e))
+    print(
+        f"待处理图纸页 {len(targets)} 页"
+        f"（已完成 {sum(len(v) for v in result.values())} 页，其中 {fresh} 页是当前识别方式）"
+    )
     if args.limit:
         targets = targets[: args.limit]
         print(f"--limit {args.limit}，本次处理 {len(targets)} 页")
@@ -143,6 +165,7 @@ def main() -> None:
                 stable, unstable = extract_page_tags(api_key, image)
                 entry["tags"], entry["unstable"] = sorted(stable), sorted(unstable)
 
+            entry["tag_method"] = TAG_METHOD
             result.setdefault(pdf.name, {})[str(index + 1)] = entry
             OUTPUT_PATH.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
             print(
