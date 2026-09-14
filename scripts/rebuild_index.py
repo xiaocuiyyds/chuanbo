@@ -16,6 +16,7 @@
 """
 
 import argparse
+import json
 import os
 import pickle
 import shutil
@@ -30,12 +31,47 @@ BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from rag import transcripts  # noqa: E402
-from rag.chunker import chunk_pages  # noqa: E402
+from rag.chunker import Chunk, chunk_pages  # noqa: E402
+from rag.diagram_index import build_pages, to_chunk_text  # noqa: E402
 from rag.embeddings import embed_texts  # noqa: E402
 from rag.llm import contextualize_chunks  # noqa: E402
 from rag.vectorstore import VectorStore  # noqa: E402
 
 DATA_DIR = BASE_DIR / "data"
+
+
+def build_diagram_chunks(pages: list) -> list[Chunk]:
+    """把 data/diagram_index.json 转成 chunk，跟正文片段一起进索引。
+
+    只放位号和介质，不放器件符号计数：符号用的模板匹配不跨页泛化，从 p112 裁的模板
+    在别的图纸上大量误报（滤器模板套到了 SAMPLING COOLER 的字母 L 上），
+    这种数据进了索引只会误导。详见 rag/diagram_symbols 的模块说明。
+
+    图纸片段的 context 直接写死，不再花钱调模型生成——它本身就已经是结构化的，
+    再让模型写一句"这个片段属于哪一节"没有增量信息。
+    """
+    index_path = DATA_DIR / "diagram_index.json"
+    if not index_path.exists():
+        return []
+
+    image_by_page = {(p.source, p.page): p.image_path for p in pages}
+    raw = json.loads(index_path.read_text(encoding="utf-8"))
+    chunks = []
+    for entry in build_pages(raw):
+        entry.symbols = {}
+        if not (entry.tags or entry.media):
+            continue  # 什么都没抽到的页面不必占索引位置
+        chunks.append(
+            Chunk(
+                source=entry.source,
+                page=entry.page,
+                text=to_chunk_text(entry),
+                image_path=image_by_page.get((entry.source, entry.page)),
+                context=f"这是《{entry.source}》第{entry.page}页图纸的机读摘要，"
+                f"内容为从图上识别出的介质管路、器件符号与设备位号。",
+            )
+        )
+    return chunks
 
 
 def main() -> None:
@@ -63,6 +99,13 @@ def main() -> None:
     pages = transcripts.load_all_pages(DATA_DIR)
     chunks = chunk_pages(pages)
     print(f"来源 {len(sources)} 份文档、{len(pages)} 页 -> 切出 {len(chunks)} 个片段")
+
+    # 图纸页的正文转录抓不到图上的位号，单独补一条结构化片段进去，
+    # 否则用户输一个阀件位号根本检索不到对应的图。
+    diagram_chunks = build_diagram_chunks(pages)
+    if diagram_chunks:
+        chunks.extend(diagram_chunks)
+        print(f"追加图纸片段 {len(diagram_chunks)} 条（位号、介质、器件符号）")
 
     chunks_path = DATA_DIR / "chunks.pkl"
     index_path = DATA_DIR / "index.faiss"

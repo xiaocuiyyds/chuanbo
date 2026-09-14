@@ -17,6 +17,17 @@ GFV22 两个，零误报；但漏掉 GFV19/GFV20——它们是横置的，而�
 
 注意连通域分析在这类图上没用：符号和管线画在一起，整张管网是一个连通域，
 实测最大连通域占了整页 63% x 19%。
+
+**重要局限：模板不跨页泛化。** 拿 p112 裁出的三个模板去跑别的图纸页，检出数随阈值
+迅速塌陷——p44 在 0.6 下 24 个、0.65 下 3 个、0.7 下 0 个，p184 是 13/3/1；
+而模板来源页 p112 是 12/8/7，稳定得多。也就是说别的页在低阈值下的那些检出大多是
+弱匹配，目视核对确实抓到误报：滤器模板只有 44x24 像素，在 p44 上套到了
+"SAMPLING COOLER" 里的字母 L 上。不同图纸的符号线宽和比例有细微差异，
+从一页裁的模板迁移不过去。
+
+所以这套东西当前只适合"针对某一页做符号定位"，不适合当作全库通用的检测器。
+要做成通用的，需要可形变匹配或训练一个小检测模型，那条路没有验证过。
+因为这个原因，符号计数不进检索索引——见 scripts/rebuild_index.py 里的说明。
 """
 
 import collections
@@ -28,9 +39,12 @@ from PIL import Image
 
 BLACK_MAX = 120  # 三通道都低于这个值才算黑线
 BLACK_MAX_CHROMA = 40  # 且通道差要小，排除彩色高亮和灰度底纹
-MATCH_THRESHOLD = 0.6  # 模板匹配相关度阈值
+MATCH_THRESHOLD = 0.7  # 模板匹配相关度阈值。0.6 在模板来源页之外会大量误报，见模块说明
 NMS_OVERLAP = 0.3
 ROTATIONS = (0, 90, 180, 270)
+# 同一种符号在一张图里会按管径画成不同大小：横置蝶阀 GFV19 是 54x42 像素，
+# 而支管上的 GFV23 只有约 20x33。只匹配单一尺度会漏掉小的那一批。
+SCALES = (0.5, 0.7, 0.85, 1.0, 1.2, 1.5)
 
 
 @dataclass
@@ -71,6 +85,7 @@ def detect_symbols(
     templates: dict[str, np.ndarray],
     threshold: float = MATCH_THRESHOLD,
     rotations: tuple[int, ...] = ROTATIONS,
+    scales: tuple[float, ...] = SCALES,
 ) -> list[SymbolHit]:
     """在黑线掩膜上匹配所有模板的所有朝向，跨模板统一做 NMS。
 
@@ -84,15 +99,18 @@ def detect_symbols(
     for kind, template in templates.items():
         for degrees in rotations:
             rotated = _rotate(template, degrees)
-            h, w = rotated.shape
-            if h > page_mask.shape[0] or w > page_mask.shape[1]:
-                continue
-            response = cv2.matchTemplate(page_mask, rotated, cv2.TM_CCOEFF_NORMED)
-            ys, xs = np.where(response >= threshold)
-            for x, y in zip(xs, ys):
-                boxes.append([int(x), int(y), int(w), int(h)])
-                scores.append(float(response[y, x]))
-                meta.append((kind, degrees))
+            for scale in scales:
+                h = max(4, int(rotated.shape[0] * scale))
+                w = max(4, int(rotated.shape[1] * scale))
+                if h > page_mask.shape[0] or w > page_mask.shape[1]:
+                    continue
+                resized = rotated if scale == 1.0 else cv2.resize(rotated, (w, h), interpolation=cv2.INTER_AREA)
+                response = cv2.matchTemplate(page_mask, resized, cv2.TM_CCOEFF_NORMED)
+                ys, xs = np.where(response >= threshold)
+                for x, y in zip(xs, ys):
+                    boxes.append([int(x), int(y), int(w), int(h)])
+                    scores.append(float(response[y, x]))
+                    meta.append((kind, degrees))
 
     if not boxes:
         return []
