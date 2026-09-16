@@ -174,18 +174,22 @@ def test_query_tokens_are_deduplicated_but_document_tokens_are_not():
     assert _tokenize(q).count("autochief") == 2
 
 
-def test_duplicate_query_terms_no_longer_swamp_the_distinguishing_one():
-    """复现实测问题：重复的通用词淹没了稀有词，正确页被压到后面。"""
+def test_dedup_removes_the_score_inflation_from_repeated_query_terms():
+    """去重要消除的就是这个加成：查询里重复的词会把只含这些词的干扰页分数抬上去。
+
+    真实场景是"原问题 + 英文关键词"里 AutoChief、600 各出现两次，把正确页从第 12 位
+    压到第 99 位。那个排序结果依赖整个语料的 IDF 分布，合成不出来；这里直接测机制本身。
+    """
+    from rag.vectorstore import _tokenize, _tokenize_query
+
     store = make_store_with_text([
         ("m.pdf", 97, "每周维护 清洁机组表面 用防静电湿巾清洁触敏屏幕"),
-        ("m.pdf", 105, "AutoChief 600 单元更换 AutoChief 600 拆卸安装螺钉 AutoChief 600"),
+        ("m.pdf", 105, "AutoChief 600 单元更换 拆卸安装螺钉"),
+        ("m.pdf", 106, "其他无关内容"),
     ])
-    query = "AutoChief 600 的每周维护要做什么 AutoChief 600 weekly maintenance"
-    scores = store.bm25.get_scores(_tokenize_query_for_test(query))
-    assert scores[0] > 0, "含每周维护的页面必须有分"
+    query = "AutoChief 600 的每周维护 AutoChief 600 weekly maintenance"
+    distractor = 1  # 只含被重复的那些词
 
-
-def _tokenize_query_for_test(text):
-    from rag.vectorstore import _tokenize_query
-
-    return _tokenize_query(text)
+    inflated = store.bm25.get_scores(_tokenize(query))[distractor]
+    plain = store.bm25.get_scores(_tokenize_query(query))[distractor]
+    assert inflated > plain, "重复词本应抬高干扰页的分数，去重后该降下来"
