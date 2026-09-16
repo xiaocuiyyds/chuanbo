@@ -39,6 +39,7 @@ DEGENERATE_MIN_LINES = 20
 DEGENERATE_LINE_RATIO = 0.35  # 且要占全部内容行的三成半以上
 DEGENERATE_MIN_REPEAT = 3  # 同一个句式至少重复这么多次才算进雷同行
 DEGENERATE_MIN_SUBSTANCE = 15  # 句式里至少要有这么多字母/数字/汉字，滤掉分隔线之类
+STRICT_RETRIES = 3  # 检测到退化后，用严格 prompt 最多重试几次
 
 # 归一化时把位号、编号替换掉，这样"同一句话换个位号"能被识别成同一个句式
 _TAG_RE = re.compile(r"[A-Za-z]{0,6}[-\s]?\d[\w\-./]*")
@@ -113,21 +114,25 @@ def _call_vl(client: OpenAI, b64: str, prompt: str) -> tuple[str, str | None]:
 
 
 def _transcribe_page(client: OpenAI, png_bytes: bytes) -> str:
-    """转录一页；检测到截断或重复套话时，换用更严格的 prompt 重试一次。
+    """转录一页；检测到截断或重复套话时，换用更严格的 prompt 重试若干次。
 
-    这类退化是偶发的（同一页同一 prompt 多次调用，大部分时候输出正常），所以重试本身就有
-    意义，不能只靠调 prompt 规避。两次都失败时返回质量较好的那次——内容不全也好过没有。
+    退化是偶发的，同一页同一 prompt 的结果在多次调用之间差别很大，所以重试本身就有意义，
+    不能只靠调 prompt 规避。但只重试一次不够——实测最顽固的两页里，严格 prompt 在 p146 上
+    三次只成功一次，单次重试有很大概率白跑。改成最多试 STRICT_RETRIES 次，拿到干净结果
+    就停。全部失败时返回最长的那次：内容不全也好过没有。
     """
     b64 = base64.b64encode(png_bytes).decode()
     text, finish_reason = _call_vl(client, b64, VL_PROMPT)
-    reason = _degenerate_reason(text, finish_reason)
-    if reason is None:
+    if _degenerate_reason(text, finish_reason) is None:
         return text
 
-    retry_text, retry_finish = _call_vl(client, b64, STRICT_VL_PROMPT)
-    if _degenerate_reason(retry_text, retry_finish) is None:
-        return retry_text
-    return retry_text if len(retry_text) > len(text) else text
+    attempts = [text]
+    for _ in range(STRICT_RETRIES):
+        retry_text, retry_finish = _call_vl(client, b64, STRICT_VL_PROMPT)
+        if _degenerate_reason(retry_text, retry_finish) is None:
+            return retry_text
+        attempts.append(retry_text)
+    return max(attempts, key=len)
 
 
 def extract_pages(
