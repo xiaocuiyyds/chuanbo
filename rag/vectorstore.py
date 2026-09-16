@@ -17,6 +17,10 @@ CANDIDATE_POOL = 20  # 向量检索和 BM25 各自先取的候选数，融合后
 
 _NON_TOKEN_RE = re.compile(r"^[\s\W_]+$")
 
+# 标识符型 token：字母打头、含数字，例如 gfv21、ewv01、al-01、qwen3。
+# 这类 token 对向量检索无意义（位号之间没有语义距离），只有精确匹配能找到它们。
+_IDENTIFIER_RE = re.compile(r"^[a-z]{1,6}[-.]?\d{1,5}[a-z0-9.\-ø]*$")
+
 
 def _tokenize(text: str) -> list[str]:
     """中英文混合分词：中文走 jieba 分词，字母数字编号（型号/报警码）保持完整。"""
@@ -34,6 +38,32 @@ class VectorStore:
         self.index.add(normalized)
         self.chunks.extend(chunks)
         self._rebuild_bm25()
+
+    def exact_token_matches(self, query_text: str, limit: int = 1) -> list[Chunk]:
+        """找出原样包含查询里"标识符型" token 的片段，按 BM25 打分取前几条。
+
+        位号、报警代码、设备型号这类 token 对向量检索是无意义的随机字符串——
+        "GFV21" 和 "GFV22" 在语义空间里没有区别，检索不出来。它们只有 BM25 能命中，
+        而 RRF 融合按排名求和，只有一路有分的候选会被"三路都沾点边"的候选压下去。
+        实测查 "GFV21 这个阀在什么位置"，BM25 把正确的图纸记录排在第 2，
+        但它连 15 个候选的池子都进不去，最终完全丢失。
+
+        所以这类查询要单独留一条通道：精确匹配是高精度信号，不该跟语义相关度混在一起排。
+        """
+        if not self.chunks or self.bm25 is None:
+            return []
+        tokens = {t for t in _tokenize(query_text) if _IDENTIFIER_RE.match(t)}
+        if not tokens:
+            return []
+
+        scores = self.bm25.get_scores(_tokenize(query_text))
+        hits = []
+        for i, chunk in enumerate(self.chunks):
+            text = chunk.retrieval_text.lower()
+            if any(t in text for t in tokens):
+                hits.append((scores[i], i))
+        hits.sort(reverse=True)
+        return [self.chunks[i] for _, i in hits[:limit]]
 
     def remove_source(self, source: str) -> int:
         """删掉某个文档的全部 chunk，返回删除条数。

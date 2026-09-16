@@ -66,6 +66,7 @@ RERANK_POOL = 15  # RRF 融合先多捞的候选数，交给 reranker 精排后�
 IMAGE_TOP_MIN_SCORE = 0.35  # 图像检索最强命中低于这个分数就不算"有把握"，不做强制保留
 NEIGHBOR_WINDOW = 1  # 喂给回答模型时，每个命中片段前后各带几个相邻片段
 TOP_K = 5  # 最终交给回答模型的片段数
+EXACT_MATCH_SLOTS = 1  # 查询里出现位号/编号时，给精确匹配保留的名额
 
 
 def _rerank_top(dashscope_key, query, pool, n):
@@ -140,6 +141,14 @@ def retrieve(
     pool, top_image_page = _retrieve_pool(store, image_index, dashscope_key, search_query, keyword_query)
 
     results = _rerank_top(dashscope_key, search_query, pool, TOP_K) if use_rerank else pool[:TOP_K]
+
+    # 位号、报警代码这类标识符对向量检索是无意义的随机串，只有 BM25 能命中；而 RRF 按排名
+    # 求和，只有一路有分的候选会被"三路都沾点边"的候选压下去。实测查"GFV21 这个阀在什么
+    # 位置"，BM25 把正确的图纸记录排在第 2，它却连候选池都进不去，最终完全丢失。
+    # 精确匹配是高精度信号，单独留一个名额，不跟语义相关度混排。
+    for chunk in store.exact_token_matches(keyword_query, limit=EXACT_MATCH_SLOTS):
+        if not any(c is chunk for c, _ in results):
+            results = results[: TOP_K - 1] + [(chunk, 1.0)]
 
     if top_image_page and not any((c.source, c.page) == top_image_page for c, _ in results):
         rescue = next((item for item in pool if (item[0].source, item[0].page) == top_image_page), None)

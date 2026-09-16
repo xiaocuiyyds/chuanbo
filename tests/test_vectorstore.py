@@ -119,3 +119,45 @@ def test_build_context_merges_consecutive_chunks_of_same_page():
 
 def test_build_context_empty():
     assert build_context([]) == ""
+
+
+def make_store_with_text(texts: list[tuple[str, int, str]]) -> VectorStore:
+    chunks = [Chunk(source=s, page=p, text=t) for s, p, t in texts]
+    rng = np.random.default_rng(1)
+    store = VectorStore(dim=DIM)
+    store.add(rng.random((len(chunks), DIM)).astype("float32"), chunks)
+    return store
+
+
+def test_exact_token_match_finds_a_tag_buried_in_a_long_question():
+    """位号对向量检索是无意义的随机串，RRF 会把只有 BM25 命中的候选压下去。
+    这条通道就是为了兜住它——实测 GFV21 曾因此完全检索不到。"""
+    store = make_store_with_text([
+        ("图纸.pdf", 112, "【图纸】燃气供应系统\nGFV19 GFV20 GFV21 GFV22"),
+        ("正文.pdf", 31, "主机燃气系统概述，涉及 GAV 与 GVU 的切换逻辑。"),
+    ])
+    hits = store.exact_token_matches("GFV21 这个阀在什么位置，起什么作用", limit=1)
+    assert hits and hits[0].page == 112
+
+
+def test_exact_token_match_ignores_plain_language_queries():
+    """普通中文问句不该触发精确匹配，否则会白占一个名额。"""
+    store = make_store_with_text([("正文.pdf", 1, "应急消防泵启动前要先启真空泵。")])
+    assert store.exact_token_matches("应急消防泵怎么启动") == []
+
+
+def test_exact_token_match_returns_nothing_when_tag_absent():
+    store = make_store_with_text([("正文.pdf", 1, "主机滑油系统说明。")])
+    assert store.exact_token_matches("XYZ999 在哪里") == []
+
+
+def test_exact_token_match_respects_limit():
+    store = make_store_with_text([
+        ("a.pdf", 1, "GFV21 出现在这里"),
+        ("b.pdf", 2, "GFV21 也出现在这里"),
+    ])
+    assert len(store.exact_token_matches("GFV21", limit=1)) == 1
+
+
+def test_exact_token_match_on_empty_store():
+    assert VectorStore(dim=DIM).exact_token_matches("GFV21") == []
