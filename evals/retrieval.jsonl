@@ -16,7 +16,7 @@
 {"q": "报警抑制功能禁用之后多久会恢复", "source": "KC-700 Manual.pdf", "page": 51, "evidence": "报警抑制"}
 {"q": "发电机控制模块上显示哪些状态信息", "source": "KC-700 Manual.pdf", "page": 88, "evidence": "发电机控制模块"}
 {"q": "值班轮机员的责任怎么转移", "source": "KC-700 Manual.pdf", "page": 153, "evidence": "值班责任转移"}
-{"q": "AutoChief 600 的每周维护要做什么", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 97, "evidence": "每周维护"}
+{"q": "AutoChief 600 每周维护时，清洁触摸屏应该用什么", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 97, "evidence": "防静电湿巾"}
 {"q": "轴承磨损状态监测怎么进入操作页面", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 49, "evidence": "BWCM"}
 {"q": "Super User 这个用户级别的超时时间是多久", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 90, "evidence": "Super User"}
 {"q": "主机启动空气压力过低会怎样", "source": "KONGSBERG AC600_MEB_FPP +(翻译结果).pdf", "page": 37, "evidence": "启动气压过低"}

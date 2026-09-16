@@ -27,6 +27,26 @@ def _tokenize(text: str) -> list[str]:
     return [tok.lower() for tok in jieba.cut(text) if tok.strip() and not _NON_TOKEN_RE.match(tok)]
 
 
+def _tokenize_query(text: str) -> list[str]:
+    """给查询用的分词，跟文档侧的区别是要去重。
+
+    查询串是"原问题 + 英文关键词"拼出来的，原问题里本来就有的英文词会被英文关键词
+    重复一遍。BM25 按词频累加，重复的词权重直接翻倍，把真正有区分度的词压下去——
+    实测查"AutoChief 600 的每周维护"，autochief 和 600 各出现两次，而全库只有两页
+    含"每周维护"，结果正确页排到第 99 位，前几名全是讲"单元更换"的无关页面。
+    去重后同一页升到第 12 位。
+
+    文档侧不能去重：那里的词频是真实信号，一页里某个词出现十次本来就该更相关。
+    """
+    seen: set[str] = set()
+    out = []
+    for token in _tokenize(text):
+        if token not in seen:
+            seen.add(token)
+            out.append(token)
+    return out
+
+
 class VectorStore:
     def __init__(self, dim: int):
         self.index = faiss.IndexFlatIP(dim)
@@ -52,11 +72,11 @@ class VectorStore:
         """
         if not self.chunks or self.bm25 is None:
             return []
-        tokens = {t for t in _tokenize(query_text) if _IDENTIFIER_RE.match(t)}
+        tokens = {t for t in _tokenize_query(query_text) if _IDENTIFIER_RE.match(t)}
         if not tokens:
             return []
 
-        scores = self.bm25.get_scores(_tokenize(query_text))
+        scores = self.bm25.get_scores(_tokenize_query(query_text))
         hits = []
         for i, chunk in enumerate(self.chunks):
             text = chunk.retrieval_text.lower()
@@ -115,7 +135,7 @@ class VectorStore:
 
         bm25_ranks: dict[int, int] = {}
         if self.bm25 is not None:
-            bm25_scores = self.bm25.get_scores(_tokenize(query_text))
+            bm25_scores = self.bm25.get_scores(_tokenize_query(query_text))
             top_bm25 = np.argsort(bm25_scores)[::-1][:pool]
             bm25_ranks = {int(idx): rank for rank, idx in enumerate(top_bm25) if bm25_scores[idx] > 0}
 

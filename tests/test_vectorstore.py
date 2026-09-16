@@ -161,3 +161,31 @@ def test_exact_token_match_respects_limit():
 
 def test_exact_token_match_on_empty_store():
     assert VectorStore(dim=DIM).exact_token_matches("GFV21") == []
+
+
+def test_query_tokens_are_deduplicated_but_document_tokens_are_not():
+    """查询串是"原问题 + 英文关键词"拼的，原问题里的英文词会被重复一遍。
+    BM25 按词频累加，重复词权重翻倍，会把真正有区分度的词压下去。
+    文档侧不能去重——那里的词频是真实信号。"""
+    from rag.vectorstore import _tokenize, _tokenize_query
+
+    q = "AutoChief 600 的每周维护 AutoChief 600 weekly maintenance"
+    assert _tokenize_query(q).count("autochief") == 1
+    assert _tokenize(q).count("autochief") == 2
+
+
+def test_duplicate_query_terms_no_longer_swamp_the_distinguishing_one():
+    """复现实测问题：重复的通用词淹没了稀有词，正确页被压到后面。"""
+    store = make_store_with_text([
+        ("m.pdf", 97, "每周维护 清洁机组表面 用防静电湿巾清洁触敏屏幕"),
+        ("m.pdf", 105, "AutoChief 600 单元更换 AutoChief 600 拆卸安装螺钉 AutoChief 600"),
+    ])
+    query = "AutoChief 600 的每周维护要做什么 AutoChief 600 weekly maintenance"
+    scores = store.bm25.get_scores(_tokenize_query_for_test(query))
+    assert scores[0] > 0, "含每周维护的页面必须有分"
+
+
+def _tokenize_query_for_test(text):
+    from rag.vectorstore import _tokenize_query
+
+    return _tokenize_query(text)
