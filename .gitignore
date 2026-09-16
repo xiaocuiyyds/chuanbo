@@ -11,3 +11,7 @@ ocr_samples/
 # 本地工具状态（含 pid / port / token 等运行时文件，不应入库）
 .superpowers/
 .claude/settings.local.json
+
+# .env 的任何备份副本（含真实密钥）
+.env.bak*
+.env.*.bak

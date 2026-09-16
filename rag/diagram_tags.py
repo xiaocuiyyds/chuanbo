@@ -67,6 +67,53 @@ TAG_PROMPT = (
 _TAG_RE = re.compile(r"\b[A-Z]{1,6}[-\s]?\d{1,6}(?:-[0-9ØΦ][\d.X×]*)?[A-Z]{0,2}\b")
 
 
+GIST_PROMPT = (
+    "这是船舶手册里的一张系统图。请用一到两句话说明：这是什么系统的图，图上有哪几类主要设备。"
+    "不要列举位号编号，不要描述元件之间的连接关系，不要描述元件在图中的位置。"
+    "看不清的一律不写。总共不超过 60 字。"
+)
+GIST_MAX_TOKENS = 150  # 输出必须短：长度本身就是防止重复循环的护栏
+
+
+def summarize_diagram(api_key: str, image: Image.Image) -> str:
+    """用一两句话说明这张图是什么系统，供语义检索用；失败返回空串。
+
+    这是视觉模型在图纸上唯一可靠的用法。判器件类型（实测 7/12 且自信地错）和说连接关系
+    （把 GVA11 说成 GVA21）都不能用，但"这是什么系统"是要点题，不需要看清小标注就能答。
+    四页各跑两遍实测：内容全部正确、长度 28~48 字、两遍高度一致。
+
+    输出限死在一两句话，既是为了让它进检索片段时不喧宾夺主，也因为退化的本质是
+    "做不到又停不下来"——输出短，就没有失控的空间。原先那版 prompt 要求描述
+    "关键组件、标注和连接关系"，在同一页上产出了 3100 字散文和 162 个编造位号。
+    """
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    client = OpenAI(api_key=api_key, base_url=DASHSCOPE_BASE_URL)
+    try:
+        response = client.chat.completions.create(
+            model=VL_MODEL,
+            max_tokens=GIST_MAX_TOKENS,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": GIST_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,"
+                                + base64.b64encode(buffer.getvalue()).decode()
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+        return (response.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
+
+
 def is_diagram_page(doc: fitz.Document, page_index: int) -> bool:
     """判断是不是图纸页：嵌了大位图，且文字层稀疏（说明标注都在图里）。"""
     page = doc[page_index]

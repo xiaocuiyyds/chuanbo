@@ -12,6 +12,7 @@ def make_page(**kwargs) -> DiagramPage:
         source="手册.pdf",
         page=112,
         title="Illustration 2.6.3b Fuel Gas Supply System (ii)",
+        gist="这是船舶燃料气体供应系统的图，主要设备包括阀门及管道。",
         tags=["GFV19", "GFV21", "GVA11-Ø88.9X3.05"],
         media=["Fuel Gas", "Air", "Nitrogen"],
         symbols={"阀-领结实心顶": 4, "滤器-双X方框": 1},
@@ -91,3 +92,19 @@ def test_tags_survive_tokenisation_so_bm25_can_match_them():
         assert tag.lower() in tokens, f"{tag} 被分词打碎了"
         # 用户直接输位号提问时，查询侧也要切出同一个 token
         assert tag.lower() in set(_tokenize(f"{tag} 是什么设备"))
+
+
+def test_gist_is_included_for_semantic_retrieval():
+    """位号和介质只能靠关键词命中，问"燃气阀组的通风怎么走"这类要靠概述提供语义信号。"""
+    text = to_chunk_text(make_page())
+    assert "燃料气体供应系统" in text
+
+
+def test_gist_is_optional():
+    text = to_chunk_text(make_page(gist=""))
+    assert "【图纸】" in text and "GFV19" in text
+
+
+def test_gist_round_trips_through_build_pages():
+    pages = build_pages({"A.pdf": {"5": {"title": "图", "gist": "这是滑油系统图", "tags": ["X1"]}}})
+    assert pages[0].gist == "这是滑油系统图"

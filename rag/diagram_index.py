@@ -6,9 +6,15 @@
 这里把三样抽取结果拼成一段结构化文字，作为普通 chunk 进正常的向量和 BM25 索引，
 不需要给检索链路加任何分支：
 
-- 位号（rag/diagram_tags）：切片识别 + 多遍取交集，可靠
+- 图名与概述：图名来自文字层，概述由视觉模型用一两句话给出（见 diagram_tags.summarize_diagram）
+- 位号（rag/diagram_tags）：切片识别 + 多遍投票，可靠
 - 介质与管线走向（rag/diagram_pipes）：PDF 矢量坐标，精确
-- 器件符号（rag/diagram_symbols）：模板匹配，精确率高但召回有限
+
+概述是这里唯一由模型生成的自然语言，它补上位号和介质给不了的语义信号——用户问
+"燃气阀组的通风怎么走"时，光靠位号列表匹配不上。但它被严格限制在一两句话、
+只说"这是什么系统、有哪几类设备"：实测这种要点题模型答得准（四页两遍全部正确、
+28~48 字），而让它判器件类型（7/12 且自信地错）或说连接关系（把 GVA11 说成
+GVA21）都不可靠，所以那两样一概不写。
 
 措辞上刻意保守。位号识别有截断和误读的残留（GVA80-Ø34X3 会被抄成 GV80），
 所以片段里写明这是"图上识别出的位号"，让回答模型和用户都清楚要回看原图确认，
@@ -23,6 +29,7 @@ class DiagramPage:
     source: str
     page: int
     title: str = ""
+    gist: str = ""
     tags: list[str] = field(default_factory=list)
     media: list[str] = field(default_factory=list)
     symbols: dict[str, int] = field(default_factory=dict)
@@ -38,6 +45,8 @@ def to_chunk_text(page: DiagramPage) -> str:
     lines = [f"【图纸】{page.title}" if page.title else "【图纸】"]
     lines.append(f"出处：{page.source} 第{page.page}页")
 
+    if page.gist:
+        lines.append(page.gist)
     if page.media:
         lines.append(f"图中标注的介质管路：{'、'.join(page.media)}")
     if page.symbols:
@@ -60,6 +69,7 @@ def build_pages(raw: dict) -> list[DiagramPage]:
                     source=source,
                     page=int(page_number),
                     title=entry.get("title", ""),
+                    gist=entry.get("gist", ""),
                     tags=entry.get("tags", []),
                     media=entry.get("media", []),
                     symbols=entry.get("symbols", {}),
