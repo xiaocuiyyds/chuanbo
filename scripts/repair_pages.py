@@ -34,6 +34,7 @@ from openai import OpenAI
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
+from rag import transcripts  # noqa: E402
 from rag.chunker import chunk_pages  # noqa: E402
 from rag.embeddings import embed_texts  # noqa: E402
 from rag.llm import contextualize_chunks  # noqa: E402
@@ -123,6 +124,19 @@ def main() -> None:
 
     new_pages = [PageText(source=s, page=p, text=t, image_path=image_names.get((s, p)))
                  for (s, p), t in new_texts.items()]
+
+    # 重转录的结果必须写回 transcripts/，那里才是重建索引的源头。只改 chunks.pkl 的话，
+    # 下次跑 rebuild_index.py 会从旧转录重新切块，把这次的修复静默覆盖掉——
+    # 实测就踩过一次：repair 报告"仍然退化 0 页"，重建索引后又变回 2 页。
+    by_source: dict[str, list[PageText]] = collections.defaultdict(list)
+    for page in new_pages:
+        by_source[page.source].append(page)
+    for source, repaired in by_source.items():
+        existing = {p.page: p for p in transcripts.load_pages(DATA_DIR, source)}
+        for page in repaired:
+            existing[page.page] = page
+        transcripts.save_pages(DATA_DIR, source, sorted(existing.values(), key=lambda p: p.page))
+    print(f"已同步回 transcripts/：{len(by_source)} 份文档、{len(new_pages)} 页")
     new_chunks = chunk_pages(new_pages)
     print(f"重新切块 {len(new_chunks)} 条，生成上下文...")
     contextualize_chunks(deepseek_key, new_pages, new_chunks, 5)
