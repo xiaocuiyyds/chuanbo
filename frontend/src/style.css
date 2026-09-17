@@ -1,31 +1,66 @@
+/* 设计基调参照 Apple Human Interface Guidelines：
+   - 字体走 -apple-system，在 macOS / iOS 上直接解析到 SF Pro，不额外加载替代字体
+   - 正文 17px（HIG 的可读性下限），层级按 HIG 的文本样式阶梯
+   - 间距走 8pt 网格、4pt 细分
+   - 语义色随亮暗自动切换，强调色用 systemBlue
+   - 材质用半透明 + backdrop-filter，对应 WWDC25 的 Liquid Glass 思路 */
+
 :root {
-  --bg: #faf9f5;
-  --bg-sidebar: #f0eee6;
-  --bg-sidebar-secondary: #e8e5d9;
-  --bg-card: #ffffff;
-  --text: #3d3929;
-  --text-muted: #6b675c;
-  --primary: #d97757;
-  --primary-dark: #b85c40;
-  --border: #e5e2d9;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --font-body: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-heading: "Source Serif 4", "PingFang SC", "Microsoft YaHei", serif;
   color-scheme: light dark;
+
+  /* —— 语义色（浅色） —— */
+  --blue: #007aff;
+  --blue-hover: #0071eb;
+  --red: #ff3b30;
+  --green: #34c759;
+
+  --bg: #f2f2f7;            /* systemGroupedBackground */
+  --bg-elevated: #ffffff;   /* 卡片、气泡 */
+  --bg-sidebar: rgba(246, 246, 248, 0.72);
+  --bg-input: rgba(118, 118, 128, 0.12);  /* HIG 的填充色是带透明度的灰 */
+  --bg-hover: rgba(118, 118, 128, 0.08);
+  --bg-active: rgba(0, 122, 255, 0.12);
+
+  --label: #000000;
+  --label-2: rgba(60, 60, 67, 0.6);       /* secondaryLabel */
+  --label-3: rgba(60, 60, 67, 0.3);       /* tertiaryLabel */
+  --separator: rgba(60, 60, 67, 0.18);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* —— 圆角：HIG 的连续圆角，容器越大半径越大 —— */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-full: 980px;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #262624;
-    --bg-sidebar: #201f1e;
-    --bg-sidebar-secondary: #2a2927;
-    --bg-card: #2c2b29;
-    --text: #e8e6dc;
-    --text-muted: #a6a399;
-    --primary: #d97757;
-    --primary-dark: #e0916f;
-    --border: #45433f;
+    --blue: #0a84ff;
+    --blue-hover: #3395ff;
+    --red: #ff453a;
+    --green: #30d158;
+
+    --bg: #000000;
+    --bg-elevated: #1c1c1e;
+    --bg-sidebar: rgba(28, 28, 30, 0.72);
+    --bg-input: rgba(118, 118, 128, 0.24);
+    --bg-hover: rgba(118, 118, 128, 0.18);
+    --bg-active: rgba(10, 132, 255, 0.24);
+
+    --label: #ffffff;
+    --label-2: rgba(235, 235, 245, 0.6);
+    --label-3: rgba(235, 235, 245, 0.3);
+    --separator: rgba(84, 84, 88, 0.6);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -42,20 +77,33 @@ body,
 
 body {
   background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.5;
+  color: var(--label);
+  font-family: var(--font);
+  font-size: 17px;          /* HIG：正文可读性下限 */
+  line-height: 1.47;
+  letter-spacing: -0.012em; /* SF 在正文尺寸下的光学字距 */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-h1,
+/* —— 文本层级，对应 HIG 的 Title / Headline / Body / Footnote —— */
+h1 {
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
 h2,
 h3,
 h4 {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  color: var(--text);
-  margin: 0.6em 0 0.4em;
+  font-size: 13px;
+  font-weight: 590;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--label-2);
+  margin: 0;
 }
 
 p {
@@ -64,84 +112,154 @@ p {
 
 button {
   font-family: inherit;
+  font-size: inherit;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--blue) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* —— 按钮 —— */
 .btn {
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 8px 14px;
-  font-size: 14px;
+  border: none;
+  background: var(--bg-input);
+  color: var(--label);
+  border-radius: var(--r-full);
+  padding: 7px 16px;
+  font-size: 15px;
+  font-weight: 510;
+  letter-spacing: -0.01em;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  transition: filter 0.15s;
+  transition: background 0.18s ease, transform 0.12s ease, opacity 0.18s ease;
 }
 
-.btn:hover {
-  filter: brightness(0.97);
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
 }
 
-@media (prefers-color-scheme: dark) {
-  .btn:hover {
-    filter: brightness(1.15);
-  }
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .btn-primary {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--blue);
   color: #fff;
-  font-weight: 600;
+  font-weight: 590;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--blue-hover);
 }
 
 .btn-block {
   width: 100%;
-  justify-content: center;
 }
 
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  border-radius: var(--r-md);
   padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* —— 回答正文 —— */
+.markdown {
+  font-size: 17px;
+  line-height: 1.55;
 }
 
 .markdown h1,
 .markdown h2,
 .markdown h3 {
-  font-size: 1.15em;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  color: var(--label);
+  margin: 1.1em 0 0.35em;
+}
+
+.markdown h1:first-child,
+.markdown h2:first-child,
+.markdown h3:first-child {
+  margin-top: 0;
 }
 
 .markdown p {
-  margin: 0.5em 0;
+  margin: 0.6em 0;
+}
+
+.markdown p:first-child {
+  margin-top: 0;
+}
+
+.markdown p:last-child {
+  margin-bottom: 0;
 }
 
 .markdown ul,
 .markdown ol {
-  margin: 0.4em 0;
-  padding-left: 1.4em;
+  margin: 0.55em 0;
+  padding-left: 1.3em;
+}
+
+.markdown li {
+  margin: 0.2em 0;
+}
+
+.markdown strong {
+  font-weight: 650;
 }
 
 .markdown code {
-  background: var(--bg-sidebar-secondary);
-  padding: 0.1em 0.35em;
-  border-radius: 4px;
-  font-size: 0.9em;
+  font-family: var(--font-mono);
+  background: var(--bg-input);
+  padding: 0.12em 0.4em;
+  border-radius: 5px;
+  font-size: 0.88em;
 }
 
+/* 表格会横向溢出，给它自己的滚动容器，别让页面横向滚 */
 .markdown table {
   border-collapse: collapse;
   width: 100%;
-  margin: 0.5em 0;
-  font-size: 0.92em;
+  margin: 0.7em 0;
+  font-size: 15px;
+  display: block;
+  overflow-x: auto;
 }
 
 .markdown th,
 .markdown td {
-  border: 1px solid var(--border);
-  padding: 4px 8px;
+  border-bottom: 1px solid var(--separator);
+  padding: 7px 12px;
   text-align: left;
+  white-space: nowrap;
+}
+
+.markdown th {
+  font-weight: 590;
+  font-size: 13px;
+  color: var(--label-2);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

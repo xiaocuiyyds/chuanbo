@@ -132,103 +132,159 @@ async function removeSource(source) {
 </template>
 
 <style scoped>
+/* 侧栏用半透明材质，内容在其下方滚动时会透出来 */
 .sidebar {
-  width: 280px;
+  width: 272px;
   flex-shrink: 0;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
-  padding: 20px 16px;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-right: 1px solid var(--separator);
+  padding: 16px 12px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.source-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 6px;
+.sidebar h3 {
+  padding: 0 8px;
+  margin: 14px 0 2px;
 }
 
-.source-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.sidebar h3:first-child {
+  margin-top: 0;
 }
 
-.source-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
+/* —— 对话列表 —— */
 .conversation-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 1px;
+  margin-bottom: 4px;
 }
 
 .conversation-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  border-radius: var(--r-sm);
+  transition: background 0.16s ease;
+}
+
+.conversation-row:hover {
+  background: var(--bg-hover);
+}
+
+.conversation-row.active {
+  background: var(--bg-active);
 }
 
 .conv-title {
   flex: 1;
+  min-width: 0;
   text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  color: var(--text);
-  font-size: 13px;
+  border: none;
+  background: none;
+  color: var(--label);
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  padding: 7px 10px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conv-title:hover {
-  background: var(--bg-sidebar-secondary);
 }
 
 .conversation-row.active .conv-title {
-  background: var(--primary);
-  color: #fff;
-  font-weight: 600;
+  font-weight: 590;
+  color: var(--blue);
 }
 
+/* 删除按钮平时隐藏，悬停才出现——减少视觉噪声 */
 .conv-delete {
-  background: transparent;
   border: none;
-  padding: 6px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
+  background: none;
+  color: var(--label-3);
+  font-size: 13px;
+  padding: 6px 9px;
+  border-radius: var(--r-sm);
+  opacity: 0;
+  transition: opacity 0.16s ease, color 0.16s ease;
 }
 
-.conv-delete:hover {
-  background: var(--bg-sidebar-secondary);
+.conversation-row:hover .conv-delete,
+.source-row:hover .conv-delete,
+.conv-delete:focus-visible {
+  opacity: 1;
 }
 
-input[type="file"] {
-  width: 100%;
-  font-size: 12px;
-  color: var(--text-muted);
+.conv-delete:hover:not(:disabled) {
+  color: var(--red);
+}
+
+/* —— 上传 —— */
+.sidebar input[type="file"] {
+  font-size: 13px;
+  color: var(--label-2);
+  padding: 0 8px;
+  max-width: 100%;
+}
+
+.sidebar input[type="file"]::file-selector-button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 510;
+  border: none;
+  background: var(--bg-input);
+  color: var(--label);
+  border-radius: var(--r-full);
+  padding: 5px 13px;
+  margin-right: 8px;
+  cursor: pointer;
 }
 
 .hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--label-2);
+  padding: 0 8px;
+  margin: 2px 0;
 }
 
 .hint.error {
-  color: var(--primary-dark);
+  color: var(--red);
+}
+
+/* —— 知识库文档列表 —— */
+.source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 4px;
+}
+
+.source-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-sm);
+  transition: background 0.16s ease;
+}
+
+.source-row:hover {
+  background: var(--bg-hover);
+}
+
+.source-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--label-2);
+  padding: 6px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 720px) {
+  .sidebar { width: 216px; }
 }
 </style>

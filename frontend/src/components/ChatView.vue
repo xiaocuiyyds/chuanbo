@@ -143,130 +143,237 @@ async function submitQuestion() {
 </template>
 
 <style scoped>
+/* 布局：内容居中、宽度受限，让长回答保持可读的行长 */
 .chat {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 0 24px;
   height: 100%;
+  position: relative;
 }
 
 .app-title {
-  padding-top: 20px;
+  font-size: 17px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
+  text-align: center;
+  padding: 14px 24px;
+  margin: 0;
+  flex-shrink: 0;
+  /* 顶栏用半透明材质，内容从下方滑过时透出来 */
+  background: var(--bg-sidebar);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--separator);
+  z-index: 2;
 }
 
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 0 24px;
+  padding: 24px 24px 120px;   /* 底部留出悬浮输入框的空间 */
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
+  scroll-behavior: smooth;
 }
 
 .message {
   display: flex;
   gap: 12px;
-  max-width: 900px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  animation: rise 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 用户消息靠右，气泡用强调色——iMessage 的做法 */
+.message.user {
+  flex-direction: row-reverse;
 }
 
 .avatar {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background: var(--bg-sidebar-secondary);
+  background: var(--bg-input);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+.message.assistant .avatar {
+  background: var(--blue);
 }
 
 .bubble {
-  flex: 1;
   min-width: 0;
+  max-width: 88%;
 }
 
+.message.user .bubble {
+  background: var(--blue);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: var(--r-lg);
+  max-width: 72%;
+}
+
+.message.user :deep(.markdown p) {
+  margin: 0;
+}
+
+.message.assistant .bubble {
+  background: var(--bg-elevated);
+  padding: 14px 18px;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* —— 参考来源：默认收起，不干扰阅读 —— */
 .sources {
-  margin-top: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
 }
 
 .sources-toggle {
   font-size: 13px;
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--blue);
+  font-weight: 510;
+}
+
+.sources-toggle:hover:not(:disabled) {
+  background: var(--bg-hover);
 }
 
 .sources-body {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .source-item {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  background: var(--bg-card);
+  background: var(--bg-input);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
 }
 
 .source-head {
   font-size: 13px;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.source-head strong {
+  font-weight: 590;
 }
 
 .text-muted {
-  color: var(--text-muted);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .source-text {
   white-space: pre-wrap;
   font-family: inherit;
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--label-2);
+  margin: 0 0 10px;
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 .source-image {
   max-width: 100%;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  display: block;
 }
 
 .error-banner {
-  color: var(--primary-dark);
-  background: var(--bg-sidebar-secondary);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
-  font-size: 14px;
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  border-radius: var(--r-md);
+  padding: 12px 16px;
+  font-size: 15px;
 }
 
+/* —— 输入框：悬浮的毛玻璃胶囊 —— */
 .composer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
-  gap: 8px;
-  padding: 12px 0 20px;
-  border-top: 1px solid var(--border);
+  gap: 10px;
+  align-items: center;
+  /* 输入区整体居中，与上方消息列同宽，而不是把两端撑开 */
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 16px 24px 22px;
+  background: linear-gradient(to top, var(--bg) 62%, transparent);
+  z-index: 2;
 }
 
 .composer input {
   flex: 1;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  font-size: 14px;
+  min-width: 0;
+  border: 1px solid var(--separator);
+  background: var(--bg-elevated);
+  color: var(--label);
+  border-radius: var(--r-full);
+  padding: 12px 20px;
+  font-size: 17px;
   font-family: inherit;
+  letter-spacing: -0.012em;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  transition: border-color 0.18s ease;
+}
+
+.composer input::placeholder {
+  color: var(--label-3);
 }
 
 .composer input:focus {
-  outline: 2px solid var(--primary);
-  outline-offset: -1px;
+  outline: none;
+  border-color: var(--blue);
 }
 
 .composer button {
   width: 44px;
-  border-radius: var(--radius);
-  font-size: 16px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 19px;
+  font-weight: 700;
+  box-shadow: var(--shadow-md);
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .messages { padding: 16px 16px 112px; }
+  .composer { padding: 12px 16px 18px; }
+  .bubble, .message.user .bubble { max-width: 100%; }
 }
 </style>
