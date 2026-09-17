@@ -32,6 +32,7 @@ import requests
 from rag.pdf_loader import PageText
 
 API_BASE = "https://mineru.net/api/v4"
+MAX_PAGES_PER_BATCH = 180  # 接口上限 200 页，留些余量
 MODEL_VERSION = "vlm"
 POLL_INTERVAL = 6  # 秒
 POLL_TIMEOUT = 1800  # 单批最长等待，超过就当失败
@@ -133,7 +134,44 @@ def parse_pdf(
 ) -> list[dict]:
     """把一份 PDF 交给 MinerU 解析，返回 content_list（带 page_idx 的块列表）。
 
-    走三步：申请带签名的上传地址 -> PUT 上传 -> 轮询批次结果。
+    接口限单文件 200 页，超过会整份失败（Machinery 296 页就是这样）。所以这里按页切分，
+    每批单独上传解析，再把各批的 page_idx 加上偏移拼回全书页码——下游按页存转录，
+    页号对不上就全乱了。
+    """
+    import fitz
+
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        total = len(doc)
+    if total <= MAX_PAGES_PER_BATCH:
+        return _parse_one(api_key, pdf_bytes, file_name, on_progress)
+
+    blocks: list[dict] = []
+    for start in range(0, total, MAX_PAGES_PER_BATCH):
+        end = min(start + MAX_PAGES_PER_BATCH, total)
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            part = fitz.open()
+            part.insert_pdf(doc, from_page=start, to_page=end - 1)
+            chunk_bytes = part.tobytes()
+            part.close()
+        if on_progress:
+            on_progress(f"分批 {start + 1}-{end} / {total} 页")
+        for block in _parse_one(api_key, chunk_bytes, file_name, on_progress):
+            try:
+                block["page_idx"] = int(block.get("page_idx", 0)) + start
+            except (TypeError, ValueError):
+                continue
+            blocks.append(block)
+    return blocks
+
+
+def _parse_one(
+    api_key: str,
+    pdf_bytes: bytes,
+    file_name: str,
+    on_progress: Callable[[str], None] | None = None,
+) -> list[dict]:
+    """解析单个批次。
+
     上传那一步不能带任何 Content-Type 请求头——签名是按"无 Content-Type"算的，
     加了就签名不匹配、返回 403（urllib 会自动加，所以这里必须用 requests）。
     """

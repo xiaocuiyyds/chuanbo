@@ -27,12 +27,14 @@ evidence 是用来校验标注本身的：标注一律先用 --verify 对着语�
 
 import argparse
 import concurrent.futures
+import re
 import json
 import os
 import sys
 import time
 from pathlib import Path
 
+import fitz
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).parent.parent
@@ -62,25 +64,48 @@ def load_cases() -> list[dict]:
     return cases
 
 
-def verify_cases(cases: list[dict], store: VectorStore) -> int:
-    """检查每道题标注的页确实存在、且确实包含 evidence 那句话。"""
-    pages: dict[tuple[str, int], str] = {}
-    for chunk in store.chunks:
-        key = (chunk.source, chunk.page)
-        pages[key] = pages.get(key, "") + "\n" + chunk.text
+def _squash(text: str) -> str:
+    """比对时忽略空白：PDF 文字层在版面换行处会插入换行符，
+    three-way changeover\nvalve 这种断行不该算作内容缺失。"""
+    return re.sub(r"\s+", "", text)
 
+
+def verify_cases(cases: list[dict], store: VectorStore) -> int:
+    """检查标注的证据句确实出现在**原始 PDF 的文字层**里。
+
+    早先这里是拿转录文本来校验的，那是个漏洞：转录本身由视觉模型生成，
+    如果它编造了内容，照着编造内容写下的标注也能"校验通过"。实际就踩了两次——
+    评测集里 125BAR 和 Super User 两条证据句，在原始 PDF 中根本不存在，
+    是当初视觉模型凭空写出来的，而我把它们当成了真值。
+
+    改成对着 PDF 文字层校验之后，这类循环论证才真正被排除。图纸页没有文字层，
+    那类问题本就不适合做单页事实问答，评测集里也不该出现。
+    """
     bad = 0
-    for case in cases:
-        for page in case["pages"]:
-            key = (case["source"], page)
-            evidence = case["evidence"][page]
-            if key not in pages:
-                print(f"  ✗ 标注的页不存在: {case['source'][:30]} p{page}  ({case['q']})")
-                bad += 1
-            elif evidence not in pages[key]:
-                print(f"  ✗ 该页不含 evidence {evidence!r}: {case['source'][:30]} p{page}")
-                bad += 1
-    print(f"标注校验：{len(cases) - bad}/{len(cases)} 条通过")
+    docs: dict[str, fitz.Document] = {}
+    try:
+        for case in cases:
+            source = case["source"]
+            if source not in docs:
+                path = BASE_DIR / source
+                if not path.exists():
+                    print(f"  ✗ 找不到源文件：{source}")
+                    bad += 1
+                    continue
+                docs[source] = fitz.open(path)
+            doc = docs[source]
+            for page in case["pages"]:
+                if page < 1 or page > len(doc):
+                    print(f"  ✗ 页码超出范围: {source[:30]} p{page}")
+                    bad += 1
+                    continue
+                if _squash(case["evidence"][page]) not in _squash(doc[page - 1].get_text()):
+                    print(f"  ✗ 原始 PDF 第{page}页不含 evidence {case['evidence'][page]!r}")
+                    bad += 1
+    finally:
+        for doc in docs.values():
+            doc.close()
+    print(f"标注校验（对照原始 PDF）：{len(cases) - bad}/{len(cases)} 条通过")
     return bad
 
 
