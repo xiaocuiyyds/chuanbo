@@ -38,6 +38,7 @@ from rag.diagram_tags import (  # noqa: E402
     extract_page_tags,
     is_diagram_page,
     load_diagram_image,
+    summarize_diagram,
 )
 
 DATA_DIR = BASE_DIR / "data"
@@ -164,6 +165,7 @@ def main() -> None:
             else:
                 stable, unstable = extract_page_tags(api_key, image)
                 entry["tags"], entry["unstable"] = sorted(stable), sorted(unstable)
+                entry["gist"] = summarize_diagram(api_key, image)
 
             entry["tag_method"] = TAG_METHOD
             result.setdefault(pdf.name, {})[str(index + 1)] = entry

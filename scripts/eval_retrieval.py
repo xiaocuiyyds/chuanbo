@@ -6,7 +6,13 @@
 评测集在 evals/retrieval.jsonl，每行一道题：
 
     单页题  {"q": .., "source": .., "page": 12, "evidence": "该页必含的字符串"}
+    位号题  {"q": "GFV21 …", …, "kind": "tag"} —— 查设备位号能否定位到对应图纸
     复合题  {"q": .., "source": .., "pages": [12, 15], "evidence": {"12": .., "15": ..}, "kind": "multi"}
+
+位号题的 evidence 用的是该页图名，不是位号本身：位号只印在嵌入位图里，文字层中一个
+都没有，没法对着原始 PDF 校验。位号的存在性是放大原图人工核对的。加这类题是因为
+踩过一次坑——一次改动把全部 5868 个位号冲成了空值，而当时评测全绿（25 道题没有一道
+查位号），是手动试 GFV21 才发现的。没有覆盖到的功能坏了不会有人告诉你。
 
 复合题的答案需要跨页才完整（例如"泵的规格是多少、启动前要先做什么"分别在两页上）。
 它们用"所需页是否都进了 top5"来衡量，单页题的 recall 看不出这种差别。
@@ -167,6 +173,7 @@ def main() -> None:
         for case, rank, coverage in pool.map(run, cases):
             ranks.append((case, rank, coverage))
 
+    tagged = [(c, r, cov) for c, r, cov in ranks if c["kind"] == "tag"]
     single = [(c, r, cov) for c, r, cov in ranks if c["kind"] == "single"]
     multi = [(c, r, cov) for c, r, cov in ranks if c["kind"] == "multi"]
     n = len(single) or 1
@@ -190,6 +197,13 @@ def main() -> None:
         for case, _, cov in multi:
             if cov < 1.0:
                 print(f"    覆盖 {cov:.0%}  {case['q']}  (需 p{case['pages']})")
+
+    if tagged:
+        hit = sum(1 for _, r, _ in tagged if r)
+        print(f"\n位号题 {len(tagged)} 道（输设备位号能否定位到图纸）")
+        for case, rank, _ in tagged:
+            print(f"  {case['q'][:28]:<30} {'第'+str(rank)+'位' if rank else '未命中'}")
+        print(f"  命中 {hit}/{len(tagged)}")
 
     missed = [(c, r) for c, r, _ in ranks if r is None]
     if missed:

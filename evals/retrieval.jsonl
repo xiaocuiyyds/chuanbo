@@ -29,3 +29,5 @@
 {"q": "消防总管的压力靠什么泵维持，这台泵的吸入阀是哪个", "source": "Prime Purity Safety Manual First Draft - July 2026.pdf", "pages": [65, 68], "evidence": {"65": "Fire Line Pressurising Pump", "68": "WMV205"}, "kind": "multi"}
 {"q": "主机滑油低压时系统怎么自动反应，滑油泵本身的配置是什么", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "pages": [145, 146], "evidence": {"145": "0.4MPa set point", "146": "Main Engine"}, "kind": "multi"}
 {"q": "锅炉给水系统的压力参数是多少，锅炉水的化验标准又是什么", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "pages": [69, 73], "evidence": {"69": "BOILER FEED WATER SYSTEM", "73": "Boiler Water"}, "kind": "multi"}
+{"q": "GFV21 这个阀在什么位置，起什么作用", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 112, "evidence": "Illustration 2.6.3b Fuel Gas Supply System (ii)", "kind": "tag"}
+{"q": "GFF27 在哪张图上", "source": "Prime Purity Machinery Manual First Draft - July 2026.pdf", "page": 112, "evidence": "Illustration 2.6.3b Fuel Gas Supply System (ii)", "kind": "tag"}

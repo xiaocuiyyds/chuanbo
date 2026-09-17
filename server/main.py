@@ -145,10 +145,17 @@ def retrieve(
     # 位号、报警代码这类标识符对向量检索是无意义的随机串，只有 BM25 能命中；而 RRF 按排名
     # 求和，只有一路有分的候选会被"三路都沾点边"的候选压下去。实测查"GFV21 这个阀在什么
     # 位置"，BM25 把正确的图纸记录排在第 2，它却连候选池都进不去，最终完全丢失。
-    # 精确匹配是高精度信号，单独留一个名额，不跟语义相关度混排。
-    for chunk in store.exact_token_matches(keyword_query, limit=EXACT_MATCH_SLOTS):
-        if not any(c is chunk for c, _ in results):
-            results = results[: TOP_K - 1] + [(chunk, 1.0)]
+    #
+    # 而且光靠 BM25 排名救不回来：图纸片段要列出整页几十个位号（p112 有 51 个），
+    # 单个位号只占全片段 1/136 的词频，怎么调片段结构都会被稀释——实测把位号单独拆成
+    # 短片段，BM25 排名也只从 93 升到 37，仍在候选池之外。
+    #
+    # 所以精确匹配不参与排序，直接置顶：用户既然输了一个完整的标识符，
+    # 原样含有它的那一页就是最直接的答案，不该跟语义相关度比分数。
+    exact = [c for c in store.exact_token_matches(keyword_query, limit=EXACT_MATCH_SLOTS)]
+    if exact:
+        rest = [item for item in results if not any(item[0] is c for c in exact)]
+        results = [(c, 1.0) for c in exact] + rest[: TOP_K - len(exact)]
 
     if top_image_page and not any((c.source, c.page) == top_image_page for c, _ in results):
         rescue = next((item for item in pool if (item[0].source, item[0].page) == top_image_page), None)
